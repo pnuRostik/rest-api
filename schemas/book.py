@@ -25,10 +25,10 @@ class BookResponse(BaseModel):
     year: int
 
 
-class PaginatedBooks(BaseModel):
+class CursorBooks(BaseModel):
+    """Cursor-based pagination response."""
+
     items: list[BookResponse]
-    total: int
-    page: int
-    page_size: int
-    pages: int
+    next_cursor: UUID | None = None
+    limit: int
 

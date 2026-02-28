@@ -2,7 +2,7 @@
 
 from uuid import UUID
 
-from sqlalchemy import select, func, asc, desc
+from sqlalchemy import select, asc, desc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.book import Book, BookStatus
@@ -33,46 +33,50 @@ class BookRepository:
         author: str | None = None,
         sort_by: str | None = None,
         sort_order: str = "asc",
-        page: int = 1,
-        page_size: int = 10,
-    ) -> tuple[list[dict], int]:
-        """Return paginated books with optional filter and sort. Returns (items, total)."""
-        if page < 1:
-            page = 1
-        if page_size < 1:
-            page_size = 10
-        page_size = min(page_size, 100)
+        cursor: UUID | None = None,
+        limit: int = 10,
+    ) -> tuple[list[dict], UUID | None]:
+        if limit < 1:
+            limit = 10
+        limit = min(limit, 100)
+        fetch_limit = limit + 1
 
         base = select(Book)
-        count_stmt = select(func.count()).select_from(Book)
 
         if status is not None:
             base = base.where(Book.status == status)
-            count_stmt = count_stmt.where(Book.status == status)
 
         if author is not None and author.strip():
-            author_trimmed = author.strip()
-            base = base.where(Book.author == author_trimmed)
-            count_stmt = count_stmt.where(Book.author == author_trimmed)
+            base = base.where(Book.author == author.strip())
 
-        if sort_by:
-            order_col = Book.title if sort_by == "title" else Book.year
-            if sort_order and sort_order.lower() == "desc":
-                base = base.order_by(desc(order_col))
-            else:
-                base = base.order_by(asc(order_col))
+        is_desc = sort_order and sort_order.lower() == "desc"
+        if sort_by == "title":
+            order_col = Book.title
+        elif sort_by == "year":
+            order_col = Book.year
         else:
-            base = base.order_by(asc(Book.id))
+            order_col = Book.id
 
-        total_result = await self._session.execute(count_stmt)
-        total = total_result.scalar_one()
+        if is_desc:
+            base = base.order_by(desc(order_col), desc(Book.id))
+        else:
+            base = base.order_by(asc(order_col), asc(Book.id))
 
-        offset = (page - 1) * page_size
-        base = base.offset(offset).limit(page_size)
+        if cursor is not None:
+            if is_desc:
+                base = base.where(Book.id < cursor)
+            else:
+                base = base.where(Book.id > cursor)
+
+        base = base.limit(fetch_limit)
         result = await self._session.execute(base)
         books = result.scalars().all()
 
-        return [_book_to_dict(b) for b in books], total
+        has_next = len(books) > limit
+        items = books[:limit]
+        next_cursor = items[-1].id if has_next and items else None
+
+        return [_book_to_dict(b) for b in items], next_cursor
 
     async def get_by_id(self, book_id: UUID) -> dict | None:
         """Return a book by ID or None."""

@@ -20,25 +20,22 @@ class BookService:
         author: str | None = None,
         sort_by: str | None = None,
         sort_order: str = "asc",
-        page: int = 1,
-        page_size: int = 10,
+        cursor: UUID | None = None,
+        limit: int = 10,
     ) -> dict:
-        """Get paginated books with optional filters and sorting."""
-        items, total = await self._repo.get_all(
+        """Get books with cursor-based pagination."""
+        items, next_cursor = await self._repo.get_all(
             status=status,
             author=author,
             sort_by=sort_by,
             sort_order=sort_order,
-            page=page,
-            page_size=page_size,
+            cursor=cursor,
+            limit=limit,
         )
-        pages = (total + page_size - 1) // page_size if page_size > 0 else 0
         return {
             "items": items,
-            "total": total,
-            "page": page,
-            "page_size": page_size,
-            "pages": pages,
+            "next_cursor": next_cursor,
+            "limit": limit,
         }
 
     async def get_by_id(self, book_id: UUID) -> dict | None:
