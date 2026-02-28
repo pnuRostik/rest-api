@@ -15,3 +15,20 @@ class BookCreate(BaseModel):
     status: BookStatus = Field(default=BookStatus.AVAILABLE, description="Status of the book")
     year: int = Field(..., ge=0, le=datetime.now().year + 1, description="Year of the book")
 
+
+class BookResponse(BaseModel):
+    id: UUID
+    title: str
+    author: str
+    description: str
+    status: BookStatus
+    year: int
+
+
+class PaginatedBooks(BaseModel):
+    items: list[BookResponse]
+    total: int
+    page: int
+    page_size: int
+    pages: int
+

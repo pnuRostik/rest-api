@@ -20,14 +20,26 @@ class BookService:
         author: str | None = None,
         sort_by: str | None = None,
         sort_order: str = "asc",
-    ) -> list[dict]:
-        """Get all books with optional filters and sorting."""
-        return await self._repo.get_all(
+        page: int = 1,
+        page_size: int = 10,
+    ) -> dict:
+        """Get paginated books with optional filters and sorting."""
+        items, total = await self._repo.get_all(
             status=status,
             author=author,
             sort_by=sort_by,
             sort_order=sort_order,
+            page=page,
+            page_size=page_size,
         )
+        pages = (total + page_size - 1) // page_size if page_size > 0 else 0
+        return {
+            "items": items,
+            "total": total,
+            "page": page,
+            "page_size": page_size,
+            "pages": pages,
+        }
 
     async def get_by_id(self, book_id: UUID) -> dict | None:
         """Get a book by ID."""
@@ -44,8 +56,8 @@ class BookService:
             "status": payload.status.value,
             "year": payload.year,
         }
-        await self._repo.add(book_dict)
-        return book_dict
+        return await self._repo.add(book_dict)
 
     async def delete(self, book_id: UUID) -> bool:
+        """Delete a book by ID."""
         return await self._repo.delete(book_id)

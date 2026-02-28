@@ -8,11 +8,17 @@ from main import app
 client = TestClient(app)
 
 
-def test_get_books_returns_200_and_list():
-    """GET /books — returns 200 and a list (could be empty)."""
+def test_get_books_returns_200_and_paginated():
+    """GET /books — returns 200 and paginated response (items, total, page, page_size, pages)."""
     response = client.get("/books")
     assert response.status_code == 200
-    assert isinstance(response.json(), list)
+    data = response.json()
+    assert "items" in data
+    assert "total" in data
+    assert "page" in data
+    assert "page_size" in data
+    assert "pages" in data
+    assert isinstance(data["items"], list)
 
 
 def test_get_book_by_id_returns_404_when_not_found():

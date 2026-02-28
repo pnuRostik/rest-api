@@ -1,15 +1,30 @@
-"""In-memory book storage (List[Dict])."""
+"""Book repository with SQLAlchemy async session (PostgreSQL)."""
 
 from uuid import UUID
 
-from models.book import BookStatus
+from sqlalchemy import select, func, asc, desc
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from models.book import Book, BookStatus
+
+
+def _book_to_dict(book: Book) -> dict:
+    """Map Book ORM to dict for API response."""
+    return {
+        "id": book.id,
+        "title": book.title,
+        "author": book.author,
+        "description": book.description or "",
+        "status": book.status.value if hasattr(book.status, "value") else book.status,
+        "year": book.year,
+    }
 
 
 class BookRepository:
-    """Repository for book data (in-memory List[Dict])."""
+    """Repository for book data using async SQLAlchemy session."""
 
-    def __init__(self) -> None:
-        self._storage: list[dict] = []
+    def __init__(self, session: AsyncSession) -> None:
+        self._session = session
 
     async def get_all(
         self,
@@ -18,45 +33,79 @@ class BookRepository:
         author: str | None = None,
         sort_by: str | None = None,
         sort_order: str = "asc",
-    ) -> list[dict]:
-        """Return all books with optional filter and sort."""
-        result = list(self._storage)
+        page: int = 1,
+        page_size: int = 10,
+    ) -> tuple[list[dict], int]:
+        """Return paginated books with optional filter and sort. Returns (items, total)."""
+        if page < 1:
+            page = 1
+        if page_size < 1:
+            page_size = 10
+        page_size = min(page_size, 100)
+
+        base = select(Book)
+        count_stmt = select(func.count()).select_from(Book)
 
         if status is not None:
-            status_val = status.value if hasattr(status, "value") else status
-            result = [b for b in result if b.get("status") == status_val]
+            base = base.where(Book.status == status)
+            count_stmt = count_stmt.where(Book.status == status)
 
         if author is not None and author.strip():
-            author_lower = author.strip().lower()
-            result = [b for b in result if (b.get("author") or "").lower() == author_lower]
+            author_trimmed = author.strip()
+            base = base.where(Book.author == author_trimmed)
+            count_stmt = count_stmt.where(Book.author == author_trimmed)
 
         if sort_by:
-            reverse = sort_order.lower() == "desc"
-            if sort_by == "title":
-                result = sorted(result, key=lambda b: (b.get("title") or "").lower(), reverse=reverse)
-            elif sort_by == "year":
-                result = sorted(result, key=lambda b: b.get("year", 0), reverse=reverse)
+            order_col = Book.title if sort_by == "title" else Book.year
+            if sort_order and sort_order.lower() == "desc":
+                base = base.order_by(desc(order_col))
             else:
-                result = sorted(result, key=lambda b: str(b.get("id", "")), reverse=reverse)
+                base = base.order_by(asc(order_col))
+        else:
+            base = base.order_by(asc(Book.id))
 
-        return result
+        total_result = await self._session.execute(count_stmt)
+        total = total_result.scalar_one()
+
+        offset = (page - 1) * page_size
+        base = base.offset(offset).limit(page_size)
+        result = await self._session.execute(base)
+        books = result.scalars().all()
+
+        return [_book_to_dict(b) for b in books], total
 
     async def get_by_id(self, book_id: UUID) -> dict | None:
         """Return a book by ID or None."""
-        for book in self._storage:
-            if str(book.get("id")) == str(book_id):
-                return book
-        return None
+        stmt = select(Book).where(Book.id == book_id)
+        result = await self._session.execute(stmt)
+        book = result.scalar_one_or_none()
+        return _book_to_dict(book) if book else None
 
     async def add(self, book: dict) -> dict:
-        """Add a book to storage. Returns the added book (with id)."""
-        self._storage.append(book)
-        return book
+        """Add a book to the database. Returns the added book (with id)."""
+        status_val = book.get("status")
+        if isinstance(status_val, str):
+            status_val = BookStatus(status_val)
+        entity = Book(
+            id=book.get("id"),
+            title=book["title"],
+            author=book["author"],
+            description=book.get("description") or "",
+            status=status_val or BookStatus.AVAILABLE,
+            year=book["year"],
+        )
+        self._session.add(entity)
+        await self._session.commit()
+        await self._session.refresh(entity)
+        return _book_to_dict(entity)
 
     async def delete(self, book_id: UUID) -> bool:
         """Remove a book by ID. Returns True if removed, False if not found."""
-        for i, book in enumerate(self._storage):
-            if str(book.get("id")) == str(book_id):
-                self._storage.pop(i)
-                return True
-        return False
+        stmt = select(Book).where(Book.id == book_id)
+        result = await self._session.execute(stmt)
+        book = result.scalar_one_or_none()
+        if book is None:
+            return False
+        await self._session.delete(book)
+        await self._session.commit()
+        return True
