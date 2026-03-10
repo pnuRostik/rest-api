@@ -15,7 +15,7 @@ services:
     build: .
     container_name: library_api
     ports:
-      - "8008:8000"
+      - "8008:8008"
     environment:
       - MONGO_URI=mongodb://mongo_admin:password@mongo_db:27017
       - MONGO_DATABASE=books
@@ -23,7 +23,7 @@ services:
       - mongo_db
     volumes:
       - .:/app
-    command: uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+    command: uvicorn main:app --host 0.0.0.0 --port 8008 --reload
 
 volumes:
   mongo_data:
