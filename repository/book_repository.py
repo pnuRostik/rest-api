@@ -9,9 +9,9 @@ from models.book import BookStatus
 
 
 def _doc_to_item(doc: dict) -> dict:
-    """Map MongoDB document to API item (id from _id)."""
+    """Map MongoDB document to API item (id from _id, serialized as str for JSON)."""
     return {
-        "id": doc["_id"],
+        "id": str(doc["_id"]),
         "title": doc["title"],
         "author": doc["author"],
         "description": doc.get("description") or "",
