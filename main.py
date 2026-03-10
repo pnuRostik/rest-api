@@ -1,22 +1,13 @@
-from contextlib import asynccontextmanager
-
 from fastapi import FastAPI
-
-from api.books import router as books_router
-from core.db import close_client
-
-
-@asynccontextmanager
-async def lifespan(app: FastAPI):
-    yield
-    await close_client()
-
+from api.book import router as book_router
+from api.auth import router as auth_router  # Імпортуємо наш новий роутер автентифікації
 
 app = FastAPI(
-    title="Library API",
-    description="API : Book.",
-    version="1.0.0",
-    lifespan=lifespan,
+    title="Library REST API",
+    description="API for library management with MongoDB and JWT Authentication",
+    version="4.0.0"
 )
 
-app.include_router(books_router)
+# Підключаємо роутер автентифікації (бажано першим, щоб він був зверху в Swagger)
+app.include_router(auth_router)
+app.include_router(book_router)

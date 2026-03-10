@@ -1,35 +1,29 @@
-"""Book schemas for request/response validation."""
+from pydantic import BaseModel, Field, ConfigDict
+from typing import Optional
+from enum import Enum
+from pydantic_mongo import ObjectIdField
 
-from datetime import datetime
 
-from pydantic import BaseModel, Field
-from pydantic_mongo import PydanticObjectId
-
-from models.book import BookStatus
+class BookStatus(str, Enum):
+    available = "available in the library"
+    issued = "issued to someone"
 
 
 class BookCreate(BaseModel):
-    title: str = Field(..., min_length=1, max_length=500, description="Name of the book")
-    author: str = Field(..., min_length=1, max_length=300, description="Author of the book")
-    description: str = Field(default="", max_length=2000, description="Description of the book")
-    status: BookStatus = Field(default=BookStatus.AVAILABLE, description="Status of the book")
-    year: int = Field(..., ge=0, le=datetime.now().year + 1, description="Year of the book")
+    title: str = Field(..., min_length=1)
+    author: str = Field(..., min_length=1)
+    description: Optional[str] = None
+    status: BookStatus = Field(default=BookStatus.available)
+    year: int = Field(..., gt=0)
+
+    # Зберігаємо enum як строку в БД
+    model_config = ConfigDict(use_enum_values=True)
 
 
-class BookResponse(BaseModel):
-    id: PydanticObjectId
-    title: str
-    author: str
-    description: str
-    status: BookStatus
-    year: int
+class BookResponse(BookCreate):
+    # ObjectIdField автоматично валідує і конвертує ObjectId з MongoDB
+    # alias="_id" каже Pydantic: "в базі це поле називається _id, але клієнту віддавай як id"
+    id: ObjectIdField = Field(alias="_id")
 
-
-class PageBooks(BaseModel):
-    """Page-based pagination response."""
-
-    items: list[BookResponse]
-    page: int = Field(..., description="Current page (1-based)")
-    size: int = Field(..., description="Items per page")
-    total: int = Field(..., description="Total number of items")
-    total_pages: int = Field(..., description="Total number of pages")
+    # Дозволяємо Pydantic шукати поля за псевдонімами
+    model_config = ConfigDict(populate_by_name=True)
