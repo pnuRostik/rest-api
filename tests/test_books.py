@@ -8,14 +8,16 @@ from main import app
 client = TestClient(app)
 
 
-def test_get_books_returns_200_and_cursor_paginated():
-    """GET /books — returns 200 and cursor-based response (items, next_cursor, limit)."""
+def test_get_books_returns_200_and_page_paginated():
+    """GET /books — returns 200 and page-based response (items, page, size, total, total_pages)."""
     response = client.get("/books")
     assert response.status_code == 200
     data = response.json()
     assert "items" in data
-    assert "next_cursor" in data
-    assert "limit" in data
+    assert "page" in data
+    assert "size" in data
+    assert "total" in data
+    assert "total_pages" in data
     assert isinstance(data["items"], list)
 
 

@@ -1,30 +1,30 @@
-"""Book repository with SQLAlchemy async session (PostgreSQL)."""
+"""Book repository with Motor (async MongoDB)."""
 
-from uuid import UUID
+from bson import ObjectId
+from bson.errors import InvalidId
 
-from sqlalchemy import select, asc, desc
-from sqlalchemy.ext.asyncio import AsyncSession
+from motor.motor_asyncio import AsyncIOMotorCollection
 
-from models.book import Book, BookStatus
+from models.book import BookStatus
 
 
-def _book_to_dict(book: Book) -> dict:
-    """Map Book ORM to dict for API response."""
+def _doc_to_item(doc: dict) -> dict:
+    """Map MongoDB document to API item (id from _id)."""
     return {
-        "id": book.id,
-        "title": book.title,
-        "author": book.author,
-        "description": book.description or "",
-        "status": book.status.value if hasattr(book.status, "value") else book.status,
-        "year": book.year,
+        "id": doc["_id"],
+        "title": doc["title"],
+        "author": doc["author"],
+        "description": doc.get("description") or "",
+        "status": doc.get("status", BookStatus.AVAILABLE.value),
+        "year": doc["year"],
     }
 
 
 class BookRepository:
-    """Repository for book data using async SQLAlchemy session."""
+    """Repository for book data using Motor async collection."""
 
-    def __init__(self, session: AsyncSession) -> None:
-        self._session = session
+    def __init__(self, collection: AsyncIOMotorCollection) -> None:
+        self._collection = collection
 
     async def get_all(
         self,
@@ -33,83 +33,70 @@ class BookRepository:
         author: str | None = None,
         sort_by: str | None = None,
         sort_order: str = "asc",
-        cursor: UUID | None = None,
-        limit: int = 10,
-    ) -> tuple[list[dict], UUID | None]:
-        if limit < 1:
-            limit = 10
-        limit = min(limit, 100)
-        fetch_limit = limit + 1
+        page: int = 1,
+        size: int = 10,
+    ) -> tuple[list[dict], int]:
+        """Return (items, total_count) for page-based pagination."""
+        if size < 1:
+            size = 10
+        size = min(size, 100)
+        if page < 1:
+            page = 1
 
-        base = select(Book)
-
+        filter_query: dict = {}
         if status is not None:
-            base = base.where(Book.status == status)
-
+            filter_query["status"] = status.value
         if author is not None and author.strip():
-            base = base.where(Book.author == author.strip())
+            filter_query["author"] = author.strip()
 
         is_desc = sort_order and sort_order.lower() == "desc"
+        direction = -1 if is_desc else 1
         if sort_by == "title":
-            order_col = Book.title
+            sort_key = [("title", direction), ("_id", direction)]
         elif sort_by == "year":
-            order_col = Book.year
+            sort_key = [("year", direction), ("_id", direction)]
         else:
-            order_col = Book.id
+            sort_key = [("_id", direction)]
 
-        if is_desc:
-            base = base.order_by(desc(order_col), desc(Book.id))
-        else:
-            base = base.order_by(asc(order_col), asc(Book.id))
+        total = await self._collection.count_documents(filter_query)
+        skip = (page - 1) * size
+        cursor_cur = (
+            self._collection.find(filter_query)
+            .sort(sort_key)
+            .skip(skip)
+            .limit(size)
+        )
+        docs = await cursor_cur.to_list(length=size)
 
-        if cursor is not None:
-            if is_desc:
-                base = base.where(Book.id < cursor)
-            else:
-                base = base.where(Book.id > cursor)
+        return [_doc_to_item(d) for d in docs], total
 
-        base = base.limit(fetch_limit)
-        result = await self._session.execute(base)
-        books = result.scalars().all()
-
-        has_next = len(books) > limit
-        items = books[:limit]
-        next_cursor = items[-1].id if has_next and items else None
-
-        return [_book_to_dict(b) for b in items], next_cursor
-
-    async def get_by_id(self, book_id: UUID) -> dict | None:
+    async def get_by_id(self, book_id: ObjectId | str) -> dict | None:
         """Return a book by ID or None."""
-        stmt = select(Book).where(Book.id == book_id)
-        result = await self._session.execute(stmt)
-        book = result.scalar_one_or_none()
-        return _book_to_dict(book) if book else None
+        try:
+            oid = ObjectId(book_id) if isinstance(book_id, str) else book_id
+        except InvalidId:
+            return None
+        doc = await self._collection.find_one({"_id": oid})
+        return _doc_to_item(doc) if doc else None
 
     async def add(self, book: dict) -> dict:
-        """Add a book to the database. Returns the added book (with id)."""
-        status_val = book.get("status")
-        if isinstance(status_val, str):
-            status_val = BookStatus(status_val)
-        entity = Book(
-            id=book.get("id"),
-            title=book["title"],
-            author=book["author"],
-            description=book.get("description") or "",
-            status=status_val or BookStatus.AVAILABLE,
-            year=book["year"],
-        )
-        self._session.add(entity)
-        await self._session.commit()
-        await self._session.refresh(entity)
-        return _book_to_dict(entity)
+        """Add a book to the database. Returns the added book (with id from _id)."""
+        doc = {
+            "title": book["title"],
+            "author": book["author"],
+            "description": book.get("description") or "",
+            "status": book.get("status", BookStatus.AVAILABLE.value),
+            "year": book["year"],
+        }
+        result = await self._collection.insert_one(doc)
+        doc["_id"] = result.inserted_id
+        return _doc_to_item(doc)
 
-    async def delete(self, book_id: UUID) -> bool:
+    async def delete(self, book_id: ObjectId | str) -> bool:
         """Remove a book by ID. Returns True if removed, False if not found."""
-        stmt = select(Book).where(Book.id == book_id)
-        result = await self._session.execute(stmt)
-        book = result.scalar_one_or_none()
-        if book is None:
+        try:
+            oid = ObjectId(book_id) if isinstance(book_id, str) else book_id
+        except InvalidId:
             return False
-        await self._session.delete(book)
-        await self._session.commit()
-        return True
+        response = await self._collection.delete_one({"_id": oid})
+        return response.deleted_count > 0

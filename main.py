@@ -3,15 +3,13 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 
 from api.books import router as books_router
-from core.db import Base, engine
+from core.db import close_client
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
     yield
-    await engine.dispose()
+    await close_client()
 
 
 app = FastAPI(
@@ -22,5 +20,3 @@ app = FastAPI(
 )
 
 app.include_router(books_router)
-
-

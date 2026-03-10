@@ -1,9 +1,9 @@
 """Book schemas for request/response validation."""
 
 from datetime import datetime
-from uuid import UUID
 
 from pydantic import BaseModel, Field
+from pydantic_mongo import PydanticObjectId
 
 from models.book import BookStatus
 
@@ -17,7 +17,7 @@ class BookCreate(BaseModel):
 
 
 class BookResponse(BaseModel):
-    id: UUID
+    id: PydanticObjectId
     title: str
     author: str
     description: str
@@ -25,10 +25,11 @@ class BookResponse(BaseModel):
     year: int
 
 
-class CursorBooks(BaseModel):
-    """Cursor-based pagination response."""
+class PageBooks(BaseModel):
+    """Page-based pagination response."""
 
     items: list[BookResponse]
-    next_cursor: UUID | None = None
-    limit: int
-
+    page: int = Field(..., description="Current page (1-based)")
+    size: int = Field(..., description="Items per page")
+    total: int = Field(..., description="Total number of items")
+    total_pages: int = Field(..., description="Total number of pages")
