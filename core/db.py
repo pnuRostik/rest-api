@@ -1,6 +1,6 @@
 import os
 
-import motor.motor_asyncio
+import pymongo
 
 MONGO_URI = os.getenv(
     "MONGO_URI",
@@ -8,15 +8,15 @@ MONGO_URI = os.getenv(
 )
 DATABASE_NAME = os.getenv("MONGO_DATABASE", "books")
 
-client: motor.motor_asyncio.AsyncIOMotorClient | None = None
+_client: pymongo.MongoClient | None = None
 
 
-def get_client() -> motor.motor_asyncio.AsyncIOMotorClient:
-    """Return the global Motor client (create on first use)."""
-    global client
-    if client is None:
-        client = motor.motor_asyncio.AsyncIOMotorClient(MONGO_URI)
-    return client
+def get_client() -> pymongo.MongoClient:
+    """Return the global PyMongo client (create on first use)."""
+    global _client
+    if _client is None:
+        _client = pymongo.MongoClient(MONGO_URI)
+    return _client
 
 
 def get_database():
@@ -29,14 +29,9 @@ def get_books_collection():
     return get_database()["books"]
 
 
-async def get_db():
-    """Dependency that yields the books collection."""
-    yield get_books_collection()
-
-
-async def close_client():
-    """Close the Motor client (e.g. on app shutdown)."""
-    global client
-    if client is not None:
-        client.close()
-        client = None
+def close_client() -> None:
+    """Close the global MongoDB client (for app teardown)."""
+    global _client
+    if _client is not None:
+        _client.close()
+        _client = None

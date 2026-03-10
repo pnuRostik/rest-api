@@ -3,7 +3,6 @@
 from datetime import datetime
 
 from pydantic import BaseModel, Field
-from pydantic_mongo import PydanticObjectId
 
 from models.book import BookStatus
 
@@ -17,7 +16,7 @@ class BookCreate(BaseModel):
 
 
 class BookResponse(BaseModel):
-    id: PydanticObjectId
+    id: str
     title: str
     author: str
     description: str

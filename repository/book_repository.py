@@ -1,17 +1,18 @@
-"""Book repository with Motor (async MongoDB)."""
+"""Book repository with PyMongo (sync MongoDB)."""
+
+import math
 
 from bson import ObjectId
 from bson.errors import InvalidId
-
-from motor.motor_asyncio import AsyncIOMotorCollection
+from pymongo.collection import Collection
 
 from models.book import BookStatus
 
 
 def _doc_to_item(doc: dict) -> dict:
-    """Map MongoDB document to API item (id from _id)."""
+    """Map MongoDB document to API item (id from _id as string)."""
     return {
-        "id": doc["_id"],
+        "id": str(doc["_id"]),
         "title": doc["title"],
         "author": doc["author"],
         "description": doc.get("description") or "",
@@ -21,12 +22,12 @@ def _doc_to_item(doc: dict) -> dict:
 
 
 class BookRepository:
-    """Repository for book data using Motor async collection."""
+    """Repository for book data using PyMongo collection."""
 
-    def __init__(self, collection: AsyncIOMotorCollection) -> None:
+    def __init__(self, collection: Collection) -> None:
         self._collection = collection
 
-    async def get_all(
+    def get_all(
         self,
         *,
         status: BookStatus | None = None,
@@ -58,28 +59,27 @@ class BookRepository:
         else:
             sort_key = [("_id", direction)]
 
-        total = await self._collection.count_documents(filter_query)
+        total = self._collection.count_documents(filter_query)
         skip = (page - 1) * size
-        cursor_cur = (
+        cursor = (
             self._collection.find(filter_query)
             .sort(sort_key)
             .skip(skip)
             .limit(size)
         )
-        docs = await cursor_cur.to_list(length=size)
-
+        docs = list(cursor)
         return [_doc_to_item(d) for d in docs], total
 
-    async def get_by_id(self, book_id: ObjectId | str) -> dict | None:
+    def get_by_id(self, book_id: ObjectId | str) -> dict | None:
         """Return a book by ID or None."""
         try:
             oid = ObjectId(book_id) if isinstance(book_id, str) else book_id
         except InvalidId:
             return None
-        doc = await self._collection.find_one({"_id": oid})
+        doc = self._collection.find_one({"_id": oid})
         return _doc_to_item(doc) if doc else None
 
-    async def add(self, book: dict) -> dict:
+    def add(self, book: dict) -> dict:
         """Add a book to the database. Returns the added book (with id from _id)."""
         doc = {
             "title": book["title"],
@@ -88,15 +88,15 @@ class BookRepository:
             "status": book.get("status", BookStatus.AVAILABLE.value),
             "year": book["year"],
         }
-        result = await self._collection.insert_one(doc)
+        result = self._collection.insert_one(doc)
         doc["_id"] = result.inserted_id
         return _doc_to_item(doc)
 
-    async def delete(self, book_id: ObjectId | str) -> bool:
+    def delete(self, book_id: ObjectId | str) -> bool:
         """Remove a book by ID. Returns True if removed, False if not found."""
         try:
             oid = ObjectId(book_id) if isinstance(book_id, str) else book_id
         except InvalidId:
             return False
-        response = await self._collection.delete_one({"_id": oid})
+        response = self._collection.delete_one({"_id": oid})
         return response.deleted_count > 0
