@@ -19,7 +19,6 @@ def _book_to_dict(book: Book) -> dict:
         "year": book.year,
     }
 
-
 class BookRepository:
     """Repository for book data using async SQLAlchemy session."""
 
@@ -55,14 +54,21 @@ class BookRepository:
             base = base.where(Book.author == author_trimmed)
             count_stmt = count_stmt.where(Book.author == author_trimmed)
 
+        SORT_FIELDS = {
+            "title": Book.title,
+            "year": Book.year,
+            "author": Book.author,
+        }
+
         if sort_by:
-            order_col = Book.title if sort_by == "title" else Book.year
-            if sort_order and sort_order.lower() == "desc":
+            order_col = SORT_FIELDS.get(sort_by, Book.id)
+            if sort_order.lower() == "desc":
                 base = base.order_by(desc(order_col))
             else:
                 base = base.order_by(asc(order_col))
         else:
-            base = base.order_by(asc(Book.id))
+            base = base.order_by(Book.id)
+
 
         total_result = await self._session.execute(count_stmt)
         total = total_result.scalar_one()
