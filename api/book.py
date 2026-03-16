@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Query, Depends, status
+from fastapi import APIRouter, HTTPException, Query, Depends, Request, status
 from fastapi.security import OAuth2PasswordBearer
 from typing import List, Optional
 from motor.motor_asyncio import AsyncIOMotorDatabase
@@ -8,11 +8,12 @@ from schemas.book import BookCreate, BookResponse, BookStatus
 from services.book import BookService
 from core.database import get_db
 from core.security import SECRET_KEY, ALGORITHM
+from core.redis_limit import rate_limit
 
 router = APIRouter(prefix="/books", tags=["Books"])
 
 # Вказуємо FastAPI, куди Swagger має відправляти логін і пароль для отримання токена
-oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login")
+oauth2_scheme = OAuth2PasswordBearer(tokenUrl="auth/login", auto_error=False)
 
 
 # перевіряє валідність JWT токена
@@ -37,6 +38,19 @@ async def get_current_user(token: str = Depends(oauth2_scheme)):
     except jwt.InvalidTokenError:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid token")
 
+async def get_optional_user(token: str = Depends(oauth2_scheme)):
+    if not token:
+        return None
+    try:
+        payload = jwt.decode(token, SECRET_KEY, algorithms=[ALGORITHM])
+        return payload.get("sub")
+    except Exception:
+        return None
+
+def get_book_service(db: AsyncIOMotorDatabase = Depends(get_db)) -> BookService:
+    return BookService(db)
+
+
 
 def get_book_service(db: AsyncIOMotorDatabase = Depends(get_db)) -> BookService:
     return BookService(db)
@@ -44,14 +58,16 @@ def get_book_service(db: AsyncIOMotorDatabase = Depends(get_db)) -> BookService:
 
 @router.get("/", response_model=List[BookResponse], status_code=status.HTTP_200_OK, response_model_by_alias=False)
 async def get_books(
+        request: Request,
         limit: int = Query(10, ge=1, description="Number of records to return"),
         offset: int = Query(0, ge=0, description="Number of records to skip"),
         status_filter: Optional[BookStatus] = Query(None, alias="status", description="Filter by status"),
         author: Optional[str] = Query(None, description="Filter by author"),
         service: BookService = Depends(get_book_service),
-        current_user: str = Depends(get_current_user)  # <--- ЗАХИСТ
+        current_user: Optional[str] = Depends(get_optional_user)
 ):
-    """Get list of books (Protected)."""
+    """Get list of books"""
+    await rate_limit(request, current_user)
     return await service.get_books(limit=limit, offset=offset, status=status_filter, author=author)
 
 

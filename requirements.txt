@@ -10,3 +10,4 @@ bcrypt==3.2.2
 python-multipart==0.0.9
 httpx==0.28.0
 pytest>=8.0.0
+redis[asyncio]==5.0.3

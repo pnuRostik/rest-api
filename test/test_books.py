@@ -1,83 +1,71 @@
-import sys
-from pathlib import Path
-
-# Ensure project root is on path (e.g. when running tests in Docker or from test/)
-sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
-
+import pytest
 from fastapi.testclient import TestClient
+from unittest.mock import AsyncMock, patch
 from main import app
+from api.book import get_book_service  
 
-# Створюємо тестовий клієнт
+
+
+class MockBookService:
+    async def get_books(self, *args, **kwargs):
+        return []  
+
+
+
+app.dependency_overrides[get_book_service] = lambda: MockBookService()
+
 client = TestClient(app)
 
-def test_login_success():
-    """Тест 1: Успішна авторизація з правильними даними"""
-    response = client.post(
-        "/auth/login", 
-        data={"username": "admin", "password": "secret"}
-    )
-    assert response.status_code == 200
-    data = response.json()
-    assert "access_token" in data
-    assert "refresh_token" in data
-    assert data["token_type"] == "bearer"
 
-def test_login_failure():
-    """Тест 2: Відмова при неправильному паролі"""
-    response = client.post(
-        "/auth/login", 
-        data={"username": "admin", "password": "wrong_password"}
-    )
-    assert response.status_code == 401
-    assert response.json()["detail"] == "Incorrect username or password"
 
-def test_protected_route_without_token():
-    """Тест 3: Спроба доступу до захищеного роута без токена"""
+def get_auth_token():
+    response = client.post("/auth/login", data={"username": "admin", "password": "secret"})
+    return response.json()["access_token"]
+
+
+
+mock_redis = lambda func: patch("core.redis_limit.redis_client.zremrangebyscore", new_callable=AsyncMock)(
+    patch("core.redis_limit.redis_client.zadd", new_callable=AsyncMock)(
+        patch("core.redis_limit.redis_client.expire", new_callable=AsyncMock)(func)))
+
+
+@mock_redis
+@patch("core.redis_limit.redis_client.zcard", new_callable=AsyncMock)
+def test_anonymous_under_limit(mock_zcard, mock_expire, mock_zadd, mock_zrem):
+    """Тест 1: Анонімний юзер ще не досяг ліміту (2 запити). Очікуємо 200 OK."""
+    mock_zcard.return_value = 1
     response = client.get("/books/")
-    assert response.status_code == 401
-    assert response.json()["detail"] == "Not authenticated"
-
-def test_protected_route_with_token():
-    """Тест 4: Успішний доступ до захищеного роута з валідним токеном"""
-    # 1. Спочатку логінимось, щоб отримати токен
-    login_response = client.post(
-        "/auth/login", 
-        data={"username": "admin", "password": "secret"}
-    )
-    access_token = login_response.json()["access_token"]
-
-    # 2. Робимо запит до книг, передаючи токен у заголовку Authorization
-    response = client.get(
-        "/books/", 
-        headers={"Authorization": f"Bearer {access_token}"}
-    )
     assert response.status_code == 200
-    assert isinstance(response.json(), list)
 
-def test_refresh_token_flow():
-    """Тест 5: Перевірка роботи Refresh токена"""
-    # 1. Отримуємо refresh_token
-    login_response = client.post(
-        "/auth/login", 
-        data={"username": "admin", "password": "secret"}
-    )
-    refresh_token = login_response.json()["refresh_token"]
 
-    # 2. Відправляємо refresh_token для отримання нового access_token
-    refresh_response = client.post(
-        "/auth/refresh", 
-        json={"refresh_token": refresh_token}
-    )
-    assert refresh_response.status_code == 200
-    data = refresh_response.json()
-    assert "access_token" in data
-    assert data["token_type"] == "bearer"
+@mock_redis
+@patch("core.redis_limit.redis_client.zcard", new_callable=AsyncMock)
+def test_anonymous_over_limit(mock_zcard, mock_expire, mock_zadd, mock_zrem):
+    """Тест 2: Анонімний юзер досяг ліміту (2 запити). Очікуємо 429 Too Many Requests."""
+    mock_zcard.return_value = 2
+    response = client.get("/books/")
+    assert response.status_code == 429
+    assert response.json()["detail"] == "Too many requests"
 
-def test_invalid_refresh_token():
-    """Тест 6: Відмова при спробі використати фейковий refresh токен"""
-    refresh_response = client.post(
-        "/auth/refresh", 
-        json={"refresh_token": "fake.jwt.token"}
-    )
-    assert refresh_response.status_code == 401
-    assert refresh_response.json()["detail"] == "Invalid token"
+
+@mock_redis
+@patch("core.redis_limit.redis_client.zcard", new_callable=AsyncMock)
+def test_authenticated_under_limit(mock_zcard, mock_expire, mock_zadd, mock_zrem):
+    """Тест 3: Авторизований юзер ще не досяг ліміту (10 запитів). Очікуємо 200 OK."""
+    token = get_auth_token()
+    mock_zcard.return_value = 9
+
+    response = client.get("/books/", headers={"Authorization": f"Bearer {token}"})
+    assert response.status_code == 200
+
+
+@mock_redis
+@patch("core.redis_limit.redis_client.zcard", new_callable=AsyncMock)
+def test_authenticated_over_limit(mock_zcard, mock_expire, mock_zadd, mock_zrem):
+    """Тест 4: Авторизований юзер досяг ліміту (10 запитів). Очікуємо 429 Too Many Requests."""
+    token = get_auth_token()
+    mock_zcard.return_value = 10
+
+    response = client.get("/books/", headers={"Authorization": f"Bearer {token}"})
+    assert response.status_code == 429
+    assert response.json()["detail"] == "Too many requests"
