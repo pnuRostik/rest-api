@@ -25,10 +25,21 @@ services:
     environment:
       - MONGO_URL=mongodb://mongo_admin:password@mongo_db:27017
       - REDIS_URL=redis://redis_cache:6379
+      - MOCK_URL=http://mock_api:4010
     depends_on:
       - mongo_db
+      - mock_api
     volumes:
       - .:/app
 
+
+  mock_api:
+    image: stoplight/prism:5
+    container_name: library_mock
+    ports:
+      - "4010:4010"
+    volumes:
+      - ./openapi.yaml:/app/openapi.yaml:ro
+    command: mock /app/openapi.yaml -h 0.0.0.0
 volumes:
   mongo_data:
