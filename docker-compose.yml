@@ -28,18 +28,27 @@ services:
       - MOCK_URL=http://mock_api:4010
     depends_on:
       - mongo_db
-      - mock_api
     volumes:
       - .:/app
 
-
-  mock_api:
-    image: stoplight/prism:5
-    container_name: library_mock
+  master:
+    image: locustio/locust
+    depends_on:
+      - api
     ports:
-      - "4010:4010"
+      - "8089:8089"
     volumes:
-      - ./openapi.yaml:/app/openapi.yaml:ro
-    command: mock /app/openapi.yaml -h 0.0.0.0
+      - ./:/mnt/locust
+    command: -f /mnt/locust/locust_tests/locustfile.py --master -H http://api:8000
+
+  worker:
+    image: locustio/locust
+    depends_on:
+      - master
+    volumes:
+      - ./:/mnt/locust
+    command: -f /mnt/locust/locust_tests/locustfile.py --worker --master-host master
+
+
 volumes:
   mongo_data:

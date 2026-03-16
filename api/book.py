@@ -64,10 +64,8 @@ async def get_books(
         status_filter: Optional[BookStatus] = Query(None, alias="status", description="Filter by status"),
         author: Optional[str] = Query(None, description="Filter by author"),
         service: BookService = Depends(get_book_service),
-        current_user: Optional[str] = Depends(get_optional_user)
 ):
     """Get list of books"""
-    await rate_limit(request, current_user)
     return await service.get_books(limit=limit, offset=offset, status=status_filter, author=author)
 
 
