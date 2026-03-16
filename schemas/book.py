@@ -5,9 +5,8 @@ from pydantic_mongo import ObjectIdField
 
 
 class BookStatus(str, Enum):
-    available = "available in the library"
-    issued = "issued to someone"
-
+    available = "available"
+    issued = "issued"
 
 class BookCreate(BaseModel):
     title: str = Field(..., min_length=1)
@@ -20,10 +19,13 @@ class BookCreate(BaseModel):
     model_config = ConfigDict(use_enum_values=True)
 
 
-class BookResponse(BookCreate):
-    # ObjectIdField автоматично валідує і конвертує ObjectId з MongoDB
-    # alias="_id" каже Pydantic: "в базі це поле називається _id, але клієнту віддавай як id"
+class BookResponse(BaseModel):
+   
     id: ObjectIdField = Field(alias="_id")
+    title: str
+    author: str
+    description: Optional[str] = None
+    status: str
+    year: int
 
-    # Дозволяємо Pydantic шукати поля за псевдонімами
     model_config = ConfigDict(populate_by_name=True)

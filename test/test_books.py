@@ -1,3 +1,9 @@
+import sys
+from pathlib import Path
+
+# Ensure project root is on path (e.g. when running tests in Docker or from test/)
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
 from fastapi.testclient import TestClient
 from main import app
 
