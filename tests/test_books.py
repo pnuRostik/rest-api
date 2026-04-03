@@ -1,15 +1,15 @@
-"""Unit tests for /books endpoints."""
-
 import pytest
 from fastapi.testclient import TestClient
-
 from main import app
 
-client = TestClient(app)
+
+@pytest.fixture
+def client():
+    with TestClient(app) as c:
+        yield c
 
 
-def test_get_books_returns_200_and_paginated():
-    """GET /books — returns 200 and paginated response (items, total, page, page_size, pages)."""
+def test_get_books_returns_200_and_paginated(client):
     response = client.get("/books")
     assert response.status_code == 200
     data = response.json()
@@ -21,14 +21,12 @@ def test_get_books_returns_200_and_paginated():
     assert isinstance(data["items"], list)
 
 
-def test_get_book_by_id_returns_404_when_not_found():
-    """GET /books/{id} — returns 404 for a non-existent id."""
+def test_get_book_by_id_returns_404_when_not_found(client):
     response = client.get("/books/00000000-0000-0000-0000-000000000000")
     assert response.status_code == 404
 
 
-def test_create_book_returns_201_and_created_book():
-    """POST /books — returns 201 and book fields in response body."""
+def test_create_book_returns_201_and_created_book(client):
     payload = {
         "title": "Test Book",
         "author": "Test Author",
@@ -44,7 +42,6 @@ def test_create_book_returns_201_and_created_book():
     assert "id" in data
 
 
-def test_delete_book_returns_204():
-    """DELETE /books/{id} — returns 204 (idempotent)."""
+def test_delete_book_returns_204(client):
     response = client.delete("/books/00000000-0000-0000-0000-000000000000")
     assert response.status_code == 204
