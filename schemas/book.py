@@ -29,6 +29,6 @@ class CursorBooks(BaseModel):
     """Cursor-based pagination response."""
 
     items: list[BookResponse]
-    next_cursor: UUID | None = None
+    next_cursor: datetime | None = None
     limit: int
 

@@ -1,3 +1,4 @@
+from datetime import datetime
 from uuid import UUID
 
 from fastapi import APIRouter, Depends, HTTPException, Query
@@ -31,19 +32,15 @@ async def get_books(
     service: BookService = Depends(get_book_service),
     status: BookStatus | None = Query(None, description="Filter by status"),
     author: str | None = Query(None, description="Filter by author (exact match)"),
-    sort_by: str | None = Query(None, description="Sort by: title, year"),
-    sort_order: str = Query("asc", description="Sort order: asc, desc"),
-    cursor: UUID | None = Query(None, description="Cursor (last item id from previous response)"),
+    cursor: datetime | None = Query(
+        None, description="Cursor: created_at of the last item from the previous page (ISO 8601)"
+    ),
     limit: int = Query(10, ge=1, le=100, description="Items per page"),
 ):
-    """Return books with cursor pagination. 200 OK."""
-    if sort_by is not None and sort_by not in ("title", "year"):
-        raise HTTPException(status_code=400, detail="sort_by must be 'title' or 'year'")
+    """Return books with cursor pagination (chronological by created_at). 200 OK."""
     data = await service.get_all(
         status=status,
         author=author,
-        sort_by=sort_by,
-        sort_order=sort_order,
         cursor=cursor,
         limit=limit,
     )

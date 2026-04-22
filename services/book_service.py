@@ -1,5 +1,6 @@
 """Book business logic."""
 
+from datetime import datetime
 from uuid import UUID, uuid4
 
 from models.book import BookStatus
@@ -18,17 +19,13 @@ class BookService:
         *,
         status: BookStatus | None = None,
         author: str | None = None,
-        sort_by: str | None = None,
-        sort_order: str = "asc",
-        cursor: UUID | None = None,
+        cursor: datetime | None = None,
         limit: int = 10,
     ) -> dict:
-        """Get books with cursor-based pagination."""
+        """Get books with cursor-based pagination (ordered by created_at)."""
         items, next_cursor = await self._repo.get_all(
             status=status,
             author=author,
-            sort_by=sort_by,
-            sort_order=sort_order,
             cursor=cursor,
             limit=limit,
         )

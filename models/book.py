@@ -2,7 +2,7 @@
 
 from enum import Enum
 import uuid
-from sqlalchemy import Column, String, Integer, Text, Enum as SQLEnum
+from sqlalchemy import Column, String, Integer, Text, Enum as SQLEnum, DateTime, func
 from sqlalchemy.dialects.postgresql import UUID
 from core.db import Base
 
@@ -23,3 +23,4 @@ class Book(Base):
     description = Column(Text, nullable=True)
     status = Column(SQLEnum(BookStatus), nullable=False, default=BookStatus.AVAILABLE)
     year = Column(Integer, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now(), nullable=False, index=True)

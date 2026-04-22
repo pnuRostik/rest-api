@@ -1,8 +1,9 @@
 """Book repository with SQLAlchemy async session (PostgreSQL)."""
 
+from datetime import datetime
 from uuid import UUID
 
-from sqlalchemy import select, asc, desc
+from sqlalchemy import select, asc
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from models.book import Book, BookStatus
@@ -31,11 +32,9 @@ class BookRepository:
         *,
         status: BookStatus | None = None,
         author: str | None = None,
-        sort_by: str | None = None,
-        sort_order: str = "asc",
-        cursor: UUID | None = None,
+        cursor: datetime | None = None,
         limit: int = 10,
-    ) -> tuple[list[dict], UUID | None]:
+    ) -> tuple[list[dict], datetime | None]:
         if limit < 1:
             limit = 10
         limit = min(limit, 100)
@@ -49,24 +48,10 @@ class BookRepository:
         if author is not None and author.strip():
             base = base.where(Book.author == author.strip())
 
-        is_desc = sort_order and sort_order.lower() == "desc"
-        if sort_by == "title":
-            order_col = Book.title
-        elif sort_by == "year":
-            order_col = Book.year
-        else:
-            order_col = Book.id
-
-        if is_desc:
-            base = base.order_by(desc(order_col), desc(Book.id))
-        else:
-            base = base.order_by(asc(order_col), asc(Book.id))
+        base = base.order_by(asc(Book.created_at), asc(Book.id))
 
         if cursor is not None:
-            if is_desc:
-                base = base.where(Book.id < cursor)
-            else:
-                base = base.where(Book.id > cursor)
+            base = base.where(Book.created_at > cursor)
 
         base = base.limit(fetch_limit)
         result = await self._session.execute(base)
@@ -74,7 +59,7 @@ class BookRepository:
 
         has_next = len(books) > limit
         items = books[:limit]
-        next_cursor = items[-1].id if has_next and items else None
+        next_cursor = items[-1].created_at if has_next and items else None
 
         return [_book_to_dict(b) for b in items], next_cursor
 
